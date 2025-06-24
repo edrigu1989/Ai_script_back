@@ -2,11 +2,11 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, EmailStr
 import os
+import google.generativeai as genai
 from typing import Optional
 import uvicorn
 import random
 import time
-from openai import OpenAI
 
 # Simple models for basic functionality
 class SignupRequest(BaseModel):
@@ -63,7 +63,7 @@ async def root():
             "supabase_url": "✅" if os.getenv("SUPABASE_URL") else "❌",
             "supabase_key": "✅" if os.getenv("SUPABASE_KEY") else "❌",
             "jwt_secret": "✅" if os.getenv("JWT_SECRET_KEY") else "❌",
-            "openai_api_key": "✅" if os.getenv("OPENAI_API_KEY") else "❌"
+            "gemini_api_key": "✅" if os.getenv("GEMINI_API_KEY") else "❌"
         }
     }
 
@@ -140,82 +140,76 @@ async def test_endpoint():
     }
 
 def generate_video_script(topic: str, platform: str, duration: int, audience: str, tone: str, style: str) -> str:
-    """Generate a video script using OpenAI API"""
+    """Generate a video script using Google Gemini API"""
     
-    # Initialize OpenAI client
-    openai_api_key = os.getenv("OPENAI_API_KEY")
-    if not openai_api_key:
+    # Initialize Gemini
+    gemini_api_key = os.getenv("GEMINI_API_KEY")
+    if not gemini_api_key:
         # Fallback to template if no API key
         return generate_template_script(topic, platform, duration, audience, tone, style)
     
     try:
-        client = OpenAI(api_key=openai_api_key)
+        # Configure Gemini
+        genai.configure(api_key=gemini_api_key)
+        model = genai.GenerativeModel('gemini-pro')
         
-        # Create detailed prompt for script generation
-        prompt = f"""You are an expert video script writer specializing in {platform} content. Create a professional, engaging video script with the following specifications:
+        # Create detailed prompt for specific content generation
+        prompt = f"""
+You are an expert video script writer specializing in {platform} content. Create a highly specific, detailed video script for the following parameters:
 
-**Video Details:**
-- Topic: {topic}
-- Platform: {platform.title()}
-- Duration: {duration} seconds
-- Target Audience: {audience or 'General audience'}
-- Tone: {tone.title()}
-- Style: {style.title()}
+TOPIC: {topic}
+PLATFORM: {platform}
+DURATION: {duration} seconds
+TARGET AUDIENCE: {audience}
+TONE: {tone}
+STYLE: {style}
 
-**Requirements:**
-1. Structure the script with clear timing for each section
-2. Include specific visual cues and directions
-3. Optimize for {platform} best practices
-4. Make it {tone} and {style}
-5. Include a strong hook in the first 5 seconds
-6. End with a compelling call-to-action
-7. Format with clear sections and timing
+REQUIREMENTS:
+1. Generate SPECIFIC, DETAILED content related to the exact topic - no generic placeholders
+2. Include actual facts, techniques, steps, or insights specific to the topic
+3. Use platform-specific language and format for {platform}
+4. Time each section precisely to total {duration} seconds
+5. Include specific examples, code snippets, or actionable advice when relevant
+6. Make it engaging for {audience} with {tone} tone
+7. Use {style} approach throughout
 
-**Format the output as:**
-- Opening Hook (X seconds)
-- Introduction (X seconds) 
-- Main Content (X seconds)
-- Conclusion/CTA (X seconds)
-- Production Notes
-- Visual Suggestions
+STRUCTURE:
+- Hook (first 3-5 seconds): Specific attention-grabbing statement about the topic
+- Introduction (5-10 seconds): Brief specific intro to what you'll cover
+- Main Content (70-80% of duration): Detailed, specific information broken into digestible points
+- Call to Action (last 5-10 seconds): Specific engagement request related to the topic
 
-Make it professional, actionable, and ready for production. The total duration should be exactly {duration} seconds."""
-
-        # Generate script using OpenAI
-        response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[
-                {"role": "system", "content": "You are a professional video script writer with expertise in creating engaging content for social media platforms. You understand platform-specific requirements and audience engagement strategies."},
-                {"role": "user", "content": prompt}
-            ],
-            max_tokens=2000,
-            temperature=0.7
-        )
-        
-        generated_script = response.choices[0].message.content
-        
-        # Add metadata header
-        script_header = f"""🎬 AI-GENERATED VIDEO SCRIPT
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+OUTPUT FORMAT:
+🎬 {platform.upper()} SCRIPT - {topic.upper()}
 
 📋 SCRIPT DETAILS:
 • Topic: {topic}
-• Platform: {platform.title()}
+• Platform: {platform}
 • Duration: {duration}s
-• Target: {audience or 'General audience'}
-• Tone: {tone.title()}
-• Style: {style.title()}
-• Generated: {time.strftime('%Y-%m-%d %H:%M:%S')}
+• Target: {audience}
+• Tone: {tone}
+• Style: {style}
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[Then provide the detailed script with specific timing and content]
 
+IMPORTANT: 
+- NO generic placeholders like [insert example] or [explain concept]
+- Include REAL, SPECIFIC information about the topic
+- Use actual terminology, techniques, or facts related to the subject
+- Make it immediately usable without any editing
 """
+
+        # Generate content with Gemini
+        response = model.generate_content(prompt)
         
-        return script_header + generated_script
-        
+        if response and response.text:
+            return response.text
+        else:
+            return generate_template_script(topic, platform, duration, audience, tone, style)
+            
     except Exception as e:
-        print(f"OpenAI API error: {e}")
-        # Fallback to template if API fails
+        print(f"Gemini API error: {e}")
+        # Fallback to template on error
         return generate_template_script(topic, platform, duration, audience, tone, style)
 
 def generate_template_script(topic: str, platform: str, duration: int, audience: str, tone: str, style: str) -> str:
