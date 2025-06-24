@@ -2,7 +2,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, EmailStr
 import os
-import google.generativeai as genai
+import anthropic
 from typing import Optional
 import uvicorn
 import random
@@ -63,7 +63,7 @@ async def root():
             "supabase_url": "✅" if os.getenv("SUPABASE_URL") else "❌",
             "supabase_key": "✅" if os.getenv("SUPABASE_KEY") else "❌",
             "jwt_secret": "✅" if os.getenv("JWT_SECRET_KEY") else "❌",
-            "gemini_api_key": "✅" if os.getenv("GEMINI_API_KEY") else "❌"
+            "claude_api_key": "✅" if os.getenv("CLAUDE_API_KEY") else "❌"
         }
     }
 
@@ -140,22 +140,20 @@ async def test_endpoint():
     }
 
 def generate_video_script(topic: str, platform: str, duration: int, audience: str, tone: str, style: str) -> str:
-    """Generate a video script using Google Gemini API"""
+    """Generate a video script using Claude AI"""
     
-    # Initialize Gemini
-    gemini_api_key = os.getenv("GEMINI_API_KEY")
-    if not gemini_api_key:
-        # Fallback to template if no API key
+    # Initialize Claude
+    claude_api_key = os.getenv("CLAUDE_API_KEY")
+    if not claude_api_key or claude_api_key == "your-claude-api-key-here":
+        # Fallback to template if no valid API key
         return generate_template_script(topic, platform, duration, audience, tone, style)
     
     try:
-        # Configure Gemini
-        genai.configure(api_key=gemini_api_key)
-        model = genai.GenerativeModel('gemini-pro')
+        # Configure Claude client
+        client = anthropic.Anthropic(api_key=claude_api_key)
         
         # Create detailed prompt for specific content generation
-        prompt = f"""
-You are an expert video script writer specializing in {platform} content. Create a highly specific, detailed video script for the following parameters:
+        prompt = f"""You are an expert video script writer specializing in {platform} content. Create a highly specific, detailed, and actionable video script for the following parameters:
 
 TOPIC: {topic}
 PLATFORM: {platform}
@@ -164,51 +162,63 @@ TARGET AUDIENCE: {audience}
 TONE: {tone}
 STYLE: {style}
 
-REQUIREMENTS:
-1. Generate SPECIFIC, DETAILED content related to the exact topic - no generic placeholders
-2. Include actual facts, techniques, steps, or insights specific to the topic
-3. Use platform-specific language and format for {platform}
-4. Time each section precisely to total {duration} seconds
-5. Include specific examples, code snippets, or actionable advice when relevant
+CRITICAL REQUIREMENTS:
+1. Generate SPECIFIC, DETAILED content related to the exact topic - absolutely NO generic placeholders
+2. Include actual facts, techniques, steps, code examples, or insights specific to the topic
+3. Use platform-specific language and format optimized for {platform}
+4. Time each section precisely to total exactly {duration} seconds
+5. Include specific examples, actionable advice, or real-world applications
 6. Make it engaging for {audience} with {tone} tone
 7. Use {style} approach throughout
+8. NO placeholders like [insert example] or [explain concept] - everything must be specific and complete
 
-STRUCTURE:
+PLATFORM OPTIMIZATION FOR {platform.upper()}:
+- YouTube: Strong hook, clear structure, engagement prompts
+- TikTok: Fast-paced, trending language, visual cues
+- Instagram: Story-driven, aesthetic language, save-worthy content
+- LinkedIn: Professional insights, industry relevance, thought leadership
+
+STRUCTURE (time precisely for {duration} seconds):
 - Hook (first 3-5 seconds): Specific attention-grabbing statement about the topic
 - Introduction (5-10 seconds): Brief specific intro to what you'll cover
-- Main Content (70-80% of duration): Detailed, specific information broken into digestible points
+- Main Content (70-80% of duration): Detailed, specific information with real examples
 - Call to Action (last 5-10 seconds): Specific engagement request related to the topic
 
 OUTPUT FORMAT:
-🎬 {platform.upper()} SCRIPT - {topic.upper()}
+🎬 {platform.upper()} SCRIPT - {duration}s
 
 📋 SCRIPT DETAILS:
 • Topic: {topic}
-• Platform: {platform}
-• Duration: {duration}s
+• Platform: {platform.title()}
+• Duration: {duration} seconds
 • Target: {audience}
-• Tone: {tone}
-• Style: {style}
+• Tone: {tone.title()}
+• Style: {style.title()}
 
-[Then provide the detailed script with specific timing and content]
+[Then provide the complete, specific script with exact timing and real content]
 
-IMPORTANT: 
-- NO generic placeholders like [insert example] or [explain concept]
-- Include REAL, SPECIFIC information about the topic
-- Use actual terminology, techniques, or facts related to the subject
-- Make it immediately usable without any editing
-"""
+REMEMBER: This must be immediately usable without any editing. Include real facts, specific techniques, actual examples, and concrete advice. NO generic placeholders whatsoever."""
 
-        # Generate content with Gemini
-        response = model.generate_content(prompt)
+        # Generate content with Claude
+        response = client.messages.create(
+            model="claude-3-sonnet-20240229",
+            max_tokens=2000,
+            temperature=0.7,
+            messages=[
+                {
+                    "role": "user",
+                    "content": prompt
+                }
+            ]
+        )
         
-        if response and response.text:
-            return response.text
+        if response and response.content and len(response.content) > 0:
+            return response.content[0].text
         else:
             return generate_template_script(topic, platform, duration, audience, tone, style)
             
     except Exception as e:
-        print(f"Gemini API error: {e}")
+        print(f"Claude API error: {e}")
         # Fallback to template on error
         return generate_template_script(topic, platform, duration, audience, tone, style)
 
