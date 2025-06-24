@@ -1,6 +1,7 @@
 # Git
 .git
 .gitignore
+README.md
 
 # Python
 __pycache__
@@ -49,12 +50,19 @@ venv.bak/
 ehthumbs.db
 Thumbs.db
 
-# Documentation
-README.md
-*.md
+# Project specific
+*.log
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
 
-# Other
-.dockerignore
-Dockerfile
+# Railway/Deployment files (keep these out of Docker)
+Procfile
+runtime.txt
 start.sh
+
+# Documentation
+docs/
+*.md
 
