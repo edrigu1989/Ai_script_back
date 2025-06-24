@@ -6,6 +6,7 @@ from typing import Optional
 import uvicorn
 import random
 import time
+from openai import OpenAI
 
 # Simple models for basic functionality
 class SignupRequest(BaseModel):
@@ -61,7 +62,8 @@ async def root():
         "environment_check": {
             "supabase_url": "✅" if os.getenv("SUPABASE_URL") else "❌",
             "supabase_key": "✅" if os.getenv("SUPABASE_KEY") else "❌",
-            "jwt_secret": "✅" if os.getenv("JWT_SECRET_KEY") else "❌"
+            "jwt_secret": "✅" if os.getenv("JWT_SECRET_KEY") else "❌",
+            "openai_api_key": "✅" if os.getenv("OPENAI_API_KEY") else "❌"
         }
     }
 
@@ -138,7 +140,86 @@ async def test_endpoint():
     }
 
 def generate_video_script(topic: str, platform: str, duration: int, audience: str, tone: str, style: str) -> str:
-    """Generate a video script based on the provided parameters"""
+    """Generate a video script using OpenAI API"""
+    
+    # Initialize OpenAI client
+    openai_api_key = os.getenv("OPENAI_API_KEY")
+    if not openai_api_key:
+        # Fallback to template if no API key
+        return generate_template_script(topic, platform, duration, audience, tone, style)
+    
+    try:
+        client = OpenAI(api_key=openai_api_key)
+        
+        # Create detailed prompt for script generation
+        prompt = f"""You are an expert video script writer specializing in {platform} content. Create a professional, engaging video script with the following specifications:
+
+**Video Details:**
+- Topic: {topic}
+- Platform: {platform.title()}
+- Duration: {duration} seconds
+- Target Audience: {audience or 'General audience'}
+- Tone: {tone.title()}
+- Style: {style.title()}
+
+**Requirements:**
+1. Structure the script with clear timing for each section
+2. Include specific visual cues and directions
+3. Optimize for {platform} best practices
+4. Make it {tone} and {style}
+5. Include a strong hook in the first 5 seconds
+6. End with a compelling call-to-action
+7. Format with clear sections and timing
+
+**Format the output as:**
+- Opening Hook (X seconds)
+- Introduction (X seconds) 
+- Main Content (X seconds)
+- Conclusion/CTA (X seconds)
+- Production Notes
+- Visual Suggestions
+
+Make it professional, actionable, and ready for production. The total duration should be exactly {duration} seconds."""
+
+        # Generate script using OpenAI
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": "You are a professional video script writer with expertise in creating engaging content for social media platforms. You understand platform-specific requirements and audience engagement strategies."},
+                {"role": "user", "content": prompt}
+            ],
+            max_tokens=2000,
+            temperature=0.7
+        )
+        
+        generated_script = response.choices[0].message.content
+        
+        # Add metadata header
+        script_header = f"""🎬 AI-GENERATED VIDEO SCRIPT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📋 SCRIPT DETAILS:
+• Topic: {topic}
+• Platform: {platform.title()}
+• Duration: {duration}s
+• Target: {audience or 'General audience'}
+• Tone: {tone.title()}
+• Style: {style.title()}
+• Generated: {time.strftime('%Y-%m-%d %H:%M:%S')}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+"""
+        
+        return script_header + generated_script
+        
+    except Exception as e:
+        print(f"OpenAI API error: {e}")
+        # Fallback to template if API fails
+        return generate_template_script(topic, platform, duration, audience, tone, style)
+
+def generate_template_script(topic: str, platform: str, duration: int, audience: str, tone: str, style: str) -> str:
+    """Fallback template-based script generation"""
     
     # Platform-specific optimizations
     platform_tips = {
